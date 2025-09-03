@@ -28,3 +28,15 @@ float get_value(matrix_t *m, int row, int col);
  * 
  */
 int matmul(matrix_t *left, matrix_t *right, matrix_t *result, int *errorcode);
+
+
+
+/**
+ * swap rows i and j in place
+ */
+void swaprows_inplace(matrix_t *m, int i, int j);
+
+/**
+ * swap columsn i and j in place
+ */
+void swapcols_inplace(matrix_t *m, int i, int j);
