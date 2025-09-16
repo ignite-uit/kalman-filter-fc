@@ -5,16 +5,18 @@
 
 // static memory allocations for matrices
 float Id_data[dimState * dimState] = {0.0f}; // Identity matrix
-float F_data[dimState * dimState] = {0.0f}; // state model matrix
-float B_data[dimState * numRowB] = {0.0f};  // control matrix
-float H_data[numColH * numRowH] = {0.0f};   // observation matrix
-float Ht_data[numColH * numRowH] = {0.0f};  // observation matrix transpose
-float Q_data[dimState * dimState] = {0.0f}; // process noise matrix
-float R_data[numRowR * numColR] = {0.0f};   // measurement noise matrix
+float F_data[dimState * dimState] = {0.0f};  // state model matrix
+float Ft_data[dimState * dimState] = {0.0f}; // state model matrix
+float B_data[dimState * numRowB] = {0.0f};   // control matrix
+float H_data[numColH * numRowH] = {0.0f};    // observation matrix
+float Ht_data[numColH * numRowH] = {0.0f};   // observation matrix transpose
+float Q_data[dimState * dimState] = {0.0f};  // process noise matrix
+float R_data[numRowR * numColR] = {0.0f};    // measurement noise matrix
+float P_data[dimState * dimState] = {1.0f};  // prediction covariance matrix
 float state_data[dimState] = {0.0f};
 float sigma_ak[6] = {0.0f};
 
-matrix_t Id, F, B, H, Ht, Q, R;
+matrix_t Id, F, Ft, B, H, Ht, Q, R, P;
 
 // statically allocate space for the residuals
 float yk_data[dimState] = {0.0f};
@@ -34,11 +36,11 @@ void kalman_filter_init()
     xkk.dim = dimState;
     xkk.data = xkk_data;
 
-
     Id.numCol = dimState;
     Id.numRow = dimState;
     Id.data = Id_data;
-    for (int i=0; i < dimState; i++) {
+    for (int i = 0; i < dimState; i++)
+    {
         set_val(&Id, i, i, 1.0f);
     }
 
@@ -55,11 +57,26 @@ void kalman_filter_init()
     F.numCol = dimState;
     F.numRow = dimState;
     F.data = F_data;
+
     for (int i = 0; i < dimState; i++)
+    {
         set_val(&F, i, i, 1.0);
-    set_val(&F, 0, 3, Dt);
-    set_val(&F, 1, 4, Dt);
-    set_val(&F, 2, 5, Dt);
+        set_val(&F, 0, 3, Dt);
+        set_val(&F, 1, 4, Dt);
+        set_val(&F, 2, 5, Dt);
+    }
+
+    Ft.numCol = dimState;
+    Ft.numRow = dimState;
+    Ft.data = F_data;
+
+    for (int i = 0; i < dimState; i++)
+    {
+        set_val(&Ft, i, i, 1.0);
+        set_val(&Ft, 3, 0, Dt);
+        set_val(&Ft, 4, 1, Dt);
+        set_val(&Ft, 5, 2, Dt);
+    }
 
     // control matrix
     /*
@@ -74,10 +91,12 @@ void kalman_filter_init()
     B.numRow = numRowB;
     B.data = B_data;
     for (int i = 0; i < numColB; i++)
+    {
         set_val(&B, i, i, 0.5f * Dt * Dt);
-    set_val(&B, 3, 0, Dt);
-    set_val(&B, 4, 1, Dt);
-    set_val(&B, 5, 2, Dt);
+        set_val(&B, 3, 0, Dt);
+        set_val(&B, 4, 1, Dt);
+        set_val(&B, 5, 2, Dt);
+    }
 
     // observation matrix --- optimize if needed
     /*
@@ -119,14 +138,16 @@ void kalman_filter_init()
     Q.numRow = dimState;
     Q.data = Q_data;
     for (int i = 0; i < dimState; i++)
+    {
         set_val(&Q, i, i, 0.25f * Dt * Dt * Dt * Dt * accelerometer_variance * Qgain);
-    set_val(&Q, 0, 3, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
-    set_val(&Q, 1, 4, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
-    set_val(&Q, 2, 5, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
+        set_val(&Q, 0, 3, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
+        set_val(&Q, 1, 4, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
+        set_val(&Q, 2, 5, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
 
-    set_val(&Q, 3, 0, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
-    set_val(&Q, 4, 1, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
-    set_val(&Q, 5, 2, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
+        set_val(&Q, 3, 0, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
+        set_val(&Q, 4, 1, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
+        set_val(&Q, 5, 2, 0.5f * Dt * Dt * Dt * accelerometer_variance * Qgain);
+    }
 
     /*
     [[GNSS_x_variance,  0,  0],
@@ -140,6 +161,56 @@ void kalman_filter_init()
     set_val(&R, 0, 0, GNSS_x_variance * Rgain);
     set_val(&R, 1, 1, GNSS_y_variance * Rgain);
     updateR(P0);
+
+    P.numRow = dimState;
+    P.numCol = dimState;
+}
+
+int getQgain(float *qgain)
+{
+    *qgain = Qgain;
+    return 0;
+}
+
+int predict(vector_t *predVec, matrix_t *predCov, vector_t *ak, int *errorcode)
+{
+    stackVectorAllocate(Fx_k, dimState);
+    stackVectorAllocate(Ba_k, dimState);
+    stackMatrixAllocate(FP, dimState, dimState);
+    stackMatrixAllocate(FPFt, dimState, dimState);
+
+    // update prediciton vector predVec
+    ////////////////////////////////////////////////
+    // F * state vector (our global xkk)
+    if (!matvecmul(&F, &xkk, &Fx_k, errorcode))
+        goto cleanup;
+
+    // Ba_k = B*ak
+    if (!matvecmul(&B, ak, &Ba_k, errorcode))
+        goto cleanup;
+
+    // predVec = F * statevec - Ba_k
+    if (!vecsub(&Fx_k, &Ba_k, predVec, errorcode))
+        goto cleanup;
+    ////////////////////////////////////////////////
+
+    // update prediction matrix predCov using our current
+    // covariance matrix P using F and ading Q
+    // predCov = F * P_current * F.T + Q
+    if (!matmul(&F, &P, &FP, errorcode))
+        goto cleanup;
+
+    if (!matmul(&FP, &Ft, &FPFt, errorcode))
+        goto cleanup;
+    
+    if (!matadd(&FPFt, &Q, predCov, errorcode))
+        goto cleanup;
+
+    return 0;
+
+cleanup:
+    fprintf(stderr, "kalman: predict failed, errorcode: %d\n", *errorcode);
+    return 1;
 }
 
 int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressure)
@@ -153,12 +224,11 @@ int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressu
 
     // Kalman gain
     stackMatrixAllocate(Kk, dimState, numRowH);
-    stackMatrixAllocate(Kk_X_H, dimState, numColH); // dimState x dimState
-    stackMatrixAllocate(Id_minus_Kk_X_H, dimState, numColH);
-
+    stackMatrixAllocate(Kk_times_H, dimState, numColH); // dimState x dimState
+    stackMatrixAllocate(Id_minus_Kk_times_H, dimState, numColH);
 
     stackMatrixAllocate(Pkkm1_X_Ht, pred_cov_mat->numCol, numColH);
-    stackMatrixAllocate(H_X_Pkkm1_X_Ht, pred_cov_mat->numCol, numColH);
+    stackMatrixAllocate(H_times_Pkkm1_times_Ht, pred_cov_mat->numCol, numColH);
     stackMatrixAllocate(Ht_X_invSK, numColH, numColR);
 
     updateR(pressure);
@@ -178,10 +248,10 @@ int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressu
     if (!matmul(pred_cov_mat, &Ht, &Pkkm1_X_Ht, &e))
         goto errorcleanup;
     // left multiply by H
-    if (!matmul(&H, &Pkkm1_X_Ht, &H_X_Pkkm1_X_Ht, &e))
+    if (!matmul(&H, &Pkkm1_X_Ht, &H_times_Pkkm1_times_Ht, &e))
         goto errorcleanup;
     // add measurement covariance matrix R
-    if (!matadd(&H_X_Pkkm1_X_Ht, &R, &Sk, &e))
+    if (!matadd(&H_times_Pkkm1_times_Ht, &R, &Sk, &e))
         goto errorcleanup;
     /////////////////////////////////////////////////////
 
@@ -214,10 +284,13 @@ int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressu
     // Pkk = (Id - (Kk * H))* pred_cov_mat
     /////////////////////////////////////////////////////
     // Kk * H
-    if (!matmul(&Kk, &H, &Kk_X_H, &e))
+    if (!matmul(&Kk, &H, &Kk_times_H, &e))
         goto errorcleanup;
-    
-    if (!matsub(&Id, &Kk_X_H, &Id_minus_Kk_X_H, &e))
+
+    if (!matsub(&Id, &Kk_times_H, &Id_minus_Kk_times_H, &e))
+        goto errorcleanup;
+
+    if (!matmul(&Id_minus_Kk_times_H, pred_cov_mat, &P, &e))
         goto errorcleanup;
 
     // update residuals
@@ -240,33 +313,9 @@ static void updateR(float pressure)
     // Altitude variance changes with pressure
     // sigma_zk = [sigma_x, sigma_y, sigma_alt]
     float sigma_alt = barometer_altitude_variance(pressure);
-    set_val(&R,0, 0, GNSS_x_variance);
-    set_val(&R,1, 1, GNSS_y_variance);
-    set_val(&R,2, 2, sigma_alt * Rgain);
-}
-
-static void print_matrix(matrix_t *m)
-{
-    for (int i = 0; i < m->numRow; i++)
-    {
-        for (int j = 0; j < m->numCol; j++)
-        {
-            // printf("%f ", get_value(&result, i, j));
-            printf("%f ", get_value(m, i, j));
-        }
-        printf("\n");
-    }
-}
-
-static void clear_matrix_data(matrix_t *m)
-{
-    for (int i = 0; i < m->numRow; i++)
-    {
-        for (int j = 0; j < m->numCol; j++)
-        {
-            set_val(m, i, j, 0.0f);
-        }
-    }
+    set_val(&R, 0, 0, GNSS_x_variance);
+    set_val(&R, 1, 1, GNSS_y_variance);
+    set_val(&R, 2, 2, sigma_alt * Rgain);
 }
 
 static void smoke_checks()
@@ -284,22 +333,22 @@ static void smoke_checks()
     }
 
     printf("R matrix\n");
-    print_matrix(&R);
+    pprint_matrix(&R);
 
     printf("H matrix\n");
-    print_matrix(&H);
+    pprint_matrix(&H);
 
     printf("result matrix RxH\n");
-    print_matrix(&result);
+    pprint_matrix(&result);
     printf("\n");
 
-    clear_matrix_data(&result);
+    clear_matrix(&result);
     errcode = 0;
     matmul(&H, &B, &result, &errcode);
     printf("B matrix\n");
-    print_matrix(&B);
+    pprint_matrix(&B);
     printf("H x B\n");
-    print_matrix(&result);
+    pprint_matrix(&result);
 }
 
 int main()
