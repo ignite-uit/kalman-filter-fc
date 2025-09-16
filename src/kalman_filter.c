@@ -206,11 +206,11 @@ int predict(vector_t *predVec, matrix_t *predCov, vector_t *ak, int *errorcode)
     if (!matadd(&FPFt, &Q, predCov, errorcode))
         goto cleanup;
 
-    return 0;
+    return 1;
 
 cleanup:
     fprintf(stderr, "kalman: predict failed, errorcode: %d\n", *errorcode);
-    return 1;
+    return 0;
 }
 
 int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressure)
