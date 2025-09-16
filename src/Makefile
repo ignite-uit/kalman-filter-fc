@@ -2,7 +2,7 @@
 
 
 COMPILER=gcc
-OPTIONS=-pedantic -Wall -Wextra -Werror -Wshadow -Wconversion -Wunreachable-code
+OPTIONS=-pedantic -Wall -Wextra -Werror -Wshadow -Wconversion -Wunreachable-code -O2
 COMPILE=$(COMPILER) $(OPTIONS)
 
 
