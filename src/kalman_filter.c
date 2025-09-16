@@ -300,6 +300,7 @@ int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressu
 
     if (!matmul(&Id_minus_Kk_times_H, pred_cov_mat, &P, errorcode))
         goto errorcleanup;
+    /////////////////////////////////////////////////////
 
     // update residuals
     // yk = zk - H*xkk
