@@ -18,23 +18,28 @@ float get_value(matrix_t *m, int row, int col)
     return m->data[idx];
 }
 
-void pprint_matrix(matrix_t *A) {
+void pprint_matrix(matrix_t *A)
+{
     int N = A->numRow;
     int M = A->numCol;
-    int i=0, j=0;
-    for (i=0; i < N; i++) {
+    int i = 0, j = 0;
+    for (i = 0; i < N; i++)
+    {
         printf("|");
-        for (j=0; j < M; j++) {
+        for (j = 0; j < M; j++)
+        {
             printf(" %8.4f", get_value(A, i, j));
         }
         printf(" |\n");
     }
 }
 
-int copy_matrix(matrix_t *matA, matrix_t *matB) {
+int copy_matrix(matrix_t *matA, matrix_t *matB)
+{
     int N = matA->numRow, M = matA->numCol;
 
-    if (!(N == matB->numRow && M == matB->numCol)) {
+    if (!(N == matB->numRow && M == matB->numCol))
+    {
         fprintf(stderr, "attemt to copy matrix with mismatching dimensions in target matrix");
         return 0;
     }
@@ -48,13 +53,92 @@ int copy_matrix(matrix_t *matA, matrix_t *matB) {
     return 1;
 }
 
-void clear_matrix(matrix_t *mat) {
+void clear_matrix(matrix_t *mat)
+{
     int N = mat->numRow, M = mat->numCol;
     float *m = mat->data;
     for (int j = 0; j < N * M; j++)
     {
         m[j] = 0.0f;
     }
+}
+
+/**
+ * Represent a vector as a matrix
+ * The vector_pointer must be of type vector_t
+ * The matrix must be of type matrix_t
+ *
+ * The matrix must be some static reference that you typically
+ * have allocated on a function stack.
+ *
+ * The vector_pointer is typically an input argument to a function
+ * and therefore a pointer.
+ */
+#define vectorAsColMatrix(vector_pointer, matrix) \
+    (matrix).numRow = (vector_pointer)->dim;      \
+    (matrix).numCol = 1;                          \
+    (matrix).data = (vector_pointer)->data;
+
+/**
+ * Calculate output = A*input
+ */
+int matvecmul(matrix_t *A, vector_t *input, vector_t *output, int *errorcode)
+{
+    matrix_t input_matrix, output_matrix;
+
+    // matrix representations of input and output
+    vectorAsColMatrix(input, input_matrix);
+    vectorAsColMatrix(output, output_matrix);
+    int e = *errorcode;
+
+    matmul(A, &input_matrix, &output_matrix, errorcode);
+    if (e != *errorcode)
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/**
+ * Calculate output = a - b
+ */
+int vecsub(vector_t *a, vector_t *b, vector_t *output, int *errorcode)
+{
+    matrix_t input_matrix_a, input_matrix_b, output_matrix;
+
+    // matrix representations of input and output
+    vectorAsColMatrix(a, input_matrix_a);
+    vectorAsColMatrix(b, input_matrix_b);
+    vectorAsColMatrix(output, output_matrix);
+    int e = *errorcode;
+
+    matsub(&input_matrix_a, &input_matrix_b, &output_matrix, errorcode);
+    if (e != *errorcode)
+    {
+        return 0;
+    }
+    return 1;
+}
+
+/**
+ * Calculate output = a + b
+ */
+int vecadd(vector_t *a, vector_t *b, vector_t *output, int *errorcode)
+{
+    matrix_t input_matrix_a, input_matrix_b, output_matrix;
+
+    // matrix representations of input and output
+    vectorAsColMatrix(a, input_matrix_a);
+    vectorAsColMatrix(b, input_matrix_b);
+    vectorAsColMatrix(output, output_matrix);
+    int e = *errorcode;
+
+    matadd(&input_matrix_a, &input_matrix_b, &output_matrix, errorcode);
+    if (e != *errorcode)
+    {
+        return 0;
+    }
+    return 1;
 }
 
 /**
@@ -195,9 +279,10 @@ void mult_mat_scal(matrix_t *mat, float scalar)
  * take inverse of 3x3 matrix A and store it in matrix invA
  *
  */
-int inv3x3(matrix_t *A, matrix_t *invA)
+int inv3x3(matrix_t *A, matrix_t *invA, int *errorcode)
 {
-    if (!(A->numRow == 3 && A->numCol==3 && invA->numCol==3 && invA->numRow == 3)) {
+    if (!(A->numRow == 3 && A->numCol == 3 && invA->numCol == 3 && invA->numRow == 3))
+    {
         fprintf(stderr, "shapes of matrix A and invA must both be 3x3\n");
     }
 
@@ -215,7 +300,6 @@ int inv3x3(matrix_t *A, matrix_t *invA)
     m21 = a12*a33 - a32*a13; m22 = a11*a33 - a31*a13; m23 = a11*a32 - a31*a12; 
     m31 = a12*a23 - a22*a13; m32 = a11*a23 - a21*a13; m33 = a11*a22 - a21*a12;
 
-
     // cofactor c_ij = (-1)^(i + j)*m_ij
     c11 =      m11, c12 = (-1)*m12, c13 =      m13;
     c21 = (-1)*m21, c22 =      m22, c23 = (-1)*m23;
@@ -228,7 +312,8 @@ int inv3x3(matrix_t *A, matrix_t *invA)
     {
         // noninvertible matrix!
         fprintf(stderr, "Error: taking inverse of non-invertible matrix!");
-        return -1;
+        *errorcode = MAT_INV_SINGULAR_MATRIX_ERROR;
+        return 0;
     }
 
     // form the transposed cofactor matrix C^T: index i,j --> j,i
@@ -238,5 +323,5 @@ int inv3x3(matrix_t *A, matrix_t *invA)
     // clang-format on
 
     mult_mat_scal(invA, 1 / det3x3);
-    return 0;
+    return 1;
 }

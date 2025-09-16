@@ -73,12 +73,12 @@ int main()
     printf("Matrix D\n");
     pprint_matrix(&D);
 
-    inv3x3(&D, &S);
+    int e;
+    inv3x3(&D, &S, &e);
     printf("inverse D\n");
     pprint_matrix(&S);
 
     printf("matmul D * inv(D)\n");
-    int e;
     matmul(&D, &S, &S2, &e);
     pprint_matrix(&S2);
 
@@ -91,7 +91,7 @@ int main()
     pprint_matrix(&A);
     printf("\n");
 
-    inv3x3(&A, &S);
+    inv3x3(&A, &S, &e);
     printf("inverse A\n");
     pprint_matrix(&S);
 
