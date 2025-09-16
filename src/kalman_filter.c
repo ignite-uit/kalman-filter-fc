@@ -26,7 +26,16 @@ vector_t yk;
 float xkk_data[dimState] = {0.0f};
 vector_t xkk;
 
-static void updateR(float pressure);
+static void updateR(float pressure)
+{
+    // assumes the GNSS variance is constant.
+    // Altitude variance changes with pressure
+    // sigma_zk = [sigma_x, sigma_y, sigma_alt]
+    float sigma_alt = barometer_altitude_variance(pressure);
+    set_val(&R, 0, 0, GNSS_x_variance);
+    set_val(&R, 1, 1, GNSS_y_variance);
+    set_val(&R, 2, 2, sigma_alt * Rgain);
+}
 
 void kalman_filter_init()
 {
@@ -202,7 +211,7 @@ int predict(vector_t *predVec, matrix_t *predCov, vector_t *ak, int *errorcode)
 
     if (!matmul(&FP, &Ft, &FPFt, errorcode))
         goto cleanup;
-    
+
     if (!matadd(&FPFt, &Q, predCov, errorcode))
         goto cleanup;
 
@@ -213,7 +222,7 @@ cleanup:
     return 0;
 }
 
-int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressure)
+int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressure, int *errorcode)
 {
     stackVectorAllocate(Hx, numRowH);
     stackVectorAllocate(Ky_k, dimState);
@@ -233,50 +242,49 @@ int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressu
 
     updateR(pressure);
 
-    int e;
     // yk = zk - H * predVec
-    if (!matvecmul(&H, predVec, &Hx, &e))
+    if (!matvecmul(&H, predVec, &Hx, errorcode))
         goto errorcleanup;
 
     // store yk = zk - Hx
-    if (!vecsub(zk, &Hx, &yk, &e))
+    if (!vecsub(zk, &Hx, &yk, errorcode))
         goto errorcleanup;
 
     // calculate residual covariance
     /////////////////////////////////////////////////////
     // Sk = H * Pkkm1 * H.t + R
-    if (!matmul(pred_cov_mat, &Ht, &Pkkm1_X_Ht, &e))
+    if (!matmul(pred_cov_mat, &Ht, &Pkkm1_X_Ht, errorcode))
         goto errorcleanup;
     // left multiply by H
-    if (!matmul(&H, &Pkkm1_X_Ht, &H_times_Pkkm1_times_Ht, &e))
+    if (!matmul(&H, &Pkkm1_X_Ht, &H_times_Pkkm1_times_Ht, errorcode))
         goto errorcleanup;
     // add measurement covariance matrix R
-    if (!matadd(&H_times_Pkkm1_times_Ht, &R, &Sk, &e))
+    if (!matadd(&H_times_Pkkm1_times_Ht, &R, &Sk, errorcode))
         goto errorcleanup;
     /////////////////////////////////////////////////////
 
     // Calculate Kalman gain
     ////////////////////////////////////////////////////
     // calculate inverse
-    if (!inv3x3(&Sk, &invSk, &e))
+    if (!inv3x3(&Sk, &invSk, errorcode))
         goto errorcleanup;
 
     // H.t * inv(Sk)
-    if (!matmul(&Ht, &invSk, &Ht_X_invSK, &e))
+    if (!matmul(&Ht, &invSk, &Ht_X_invSK, errorcode))
         goto errorcleanup;
 
-    if (!matmul(pred_cov_mat, &Ht_X_invSK, &Kk, &e))
+    if (!matmul(pred_cov_mat, &Ht_X_invSK, &Kk, errorcode))
         goto errorcleanup;
     ////////////////////////////////////////////////////
 
     // calculate new estimate
     /////////////////////////////////////////////////////
     // calculate Ky_k = Kk * yk
-    if (!matvecmul(&Kk, &yk, &Ky_k, &e))
+    if (!matvecmul(&Kk, &yk, &Ky_k, errorcode))
         goto errorcleanup;
 
     // xkk = predVec + Ky_k
-    if (!vecadd(predVec, &Ky_k, &xkk, &e))
+    if (!vecadd(predVec, &Ky_k, &xkk, errorcode))
         goto errorcleanup;
     /////////////////////////////////////////////////////
 
@@ -284,18 +292,18 @@ int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressu
     // Pkk = (Id - (Kk * H))* pred_cov_mat
     /////////////////////////////////////////////////////
     // Kk * H
-    if (!matmul(&Kk, &H, &Kk_times_H, &e))
+    if (!matmul(&Kk, &H, &Kk_times_H, errorcode))
         goto errorcleanup;
 
-    if (!matsub(&Id, &Kk_times_H, &Id_minus_Kk_times_H, &e))
+    if (!matsub(&Id, &Kk_times_H, &Id_minus_Kk_times_H, errorcode))
         goto errorcleanup;
 
-    if (!matmul(&Id_minus_Kk_times_H, pred_cov_mat, &P, &e))
+    if (!matmul(&Id_minus_Kk_times_H, pred_cov_mat, &P, errorcode))
         goto errorcleanup;
 
     // update residuals
     // yk = zk - H*xkk
-    if (!matvecmul(&H, &xkk, &Hx, &e))
+    if (!matvecmul(&H, &xkk, &Hx, errorcode))
         goto errorcleanup;
 
     return 1;
@@ -303,19 +311,21 @@ int update(vector_t *predVec, matrix_t *pred_cov_mat, vector_t *zk, float pressu
 errorcleanup:
     fprintf(stderr, "kalman update function failed,"
                     "errorcode %d, \n",
-            e);
+            *errorcode);
     return 0;
 }
 
-static void updateR(float pressure)
-{
-    // assumes the GNSS variance is constant.
-    // Altitude variance changes with pressure
-    // sigma_zk = [sigma_x, sigma_y, sigma_alt]
-    float sigma_alt = barometer_altitude_variance(pressure);
-    set_val(&R, 0, 0, GNSS_x_variance);
-    set_val(&R, 1, 1, GNSS_y_variance);
-    set_val(&R, 2, 2, sigma_alt * Rgain);
+int KF_one_iteration(vector_t *ak, vector_t *zk, float pressure, int *errorcode) {
+    // ak -- accelerometer data in meters per second and in earth frame of reference
+    // zk -- k'th GNSS and barometer measurement in meters
+    //  int predict(vector_t *predVec, matrix_t *predCov, vector_t *ak, int *errorcode)
+    stackVectorAllocate(pred_vec, dimState);
+    stackMatrixAllocate(pred_cov_mat, dimState, dimState);
+    if (!predict(&pred_vec, &pred_cov_mat, ak, errorcode))
+        return 1;
+    if (!update(&pred_vec, &pred_cov_mat, zk, pressure,  errorcode))
+        return 1;
+    return 0;
 }
 
 static void smoke_checks()
