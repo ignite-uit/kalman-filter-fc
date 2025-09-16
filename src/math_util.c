@@ -284,6 +284,8 @@ int inv3x3(matrix_t *A, matrix_t *invA, int *errorcode)
     if (!(A->numRow == 3 && A->numCol == 3 && invA->numCol == 3 && invA->numRow == 3))
     {
         fprintf(stderr, "shapes of matrix A and invA must both be 3x3\n");
+        *errorcode = MAT_INV_SHAPE_MISMATCH_ERROR;
+        return 0;
     }
 
     float a11, a12, a13, a21, a22, a23, a31, a32, a33; // matrix elements
